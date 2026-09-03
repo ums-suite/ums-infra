@@ -1,0 +1,25 @@
+{{ include "service-chart.fullname" . }} deployed.
+
+Service:
+  kubectl -n {{ .Release.Namespace }} get svc {{ include "service-chart.fullname" . }}
+
+{{- if .Values.ingress.enabled }}
+
+Ingress host(s):
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+(add each host to /etc/hosts pointing at 127.0.0.1 -- kind's ingress-nginx is
+reachable on the host's port 80/443, per docs/adr/0001-local-cluster-tool-kind.md)
+{{- else }}
+
+Ingress is disabled. Port-forward to reach it directly:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "service-chart.fullname" . }} 8080:{{ .Values.service.port }}
+{{- end }}
+
+{{- if .Values.serviceMonitor.enabled }}
+
+Scraped by platform-observability's Prometheus at {{ .Values.serviceMonitor.path }}
+every {{ .Values.serviceMonitor.interval }} (requires platform-observability to
+already be installed -- the ServiceMonitor CRD it provides must exist first).
+{{- end }}

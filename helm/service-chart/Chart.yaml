@@ -1,0 +1,17 @@
+apiVersion: v2
+name: service-chart
+description: >-
+  Generic, reusable Helm chart for deploying any of UMS's eight deployables -- ums-core,
+  UMS.Workers, or any of the six ums-*-web Angular frontends -- to the local/staging kind cluster.
+  One chart, one values-<deployable>.yaml per deployable -- nothing hand-rolls its own Kubernetes
+  manifests, per docs/adr/0001-local-cluster-tool-kind.md. Unlike a many-microservice platform
+  (one chart reused by 13+ service repos), UMS reuses this same chart across only eight
+  deployables total -- one backend, one worker, six frontends -- since ADR-0001 in ums-platform
+  keeps ums-core a single deployable rather than one chart instance per module.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+home: https://github.com/ums-suite/ums-infra
+keywords:
+  - ums
+  - deployment

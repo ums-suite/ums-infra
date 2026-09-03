@@ -1,0 +1,145 @@
+# Default values for service-chart. Each of UMS's eight deployables (ums-core, UMS.Workers, the
+# six ums-*-web frontends) overrides this with its own -f values-<deployable>.yaml (image repo,
+# ingress host, resources, etc.) -- see README.md for worked examples, and
+# examples/hello-world-values.yaml for a values file that proves the whole path end-to-end with no
+# real UMS image built yet.
+
+nameOverride: ""
+fullnameOverride: ""
+
+replicaCount: 1
+
+image:
+  repository: ""
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: false
+
+# Container port the application listens on (ASP.NET Core's default container port is 8080 for
+# ums-core/UMS.Workers -- see each repo's own Dockerfile EXPOSE once it exists; an Angular SSR
+# app's Node server typically listens on 4000).
+containerPort: 8080
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  # Uncomment to terminate TLS with the local self-signed ClusterIssuer
+  # (docs/adr/0001-local-cluster-tool-kind.md):
+  #   cert-manager.io/cluster-issuer: selfsigned-local-ca
+  hosts:
+    - host: ""
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  # - secretName: chart-example-tls
+  #   hosts:
+  #     - chart-example.local
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# ums-core is explicitly stateless and horizontally scaled via Kubernetes HPA with no session
+# affinity (container-diagram.md: "horizontally scaled via Kubernetes HPA, no local session
+# state"; ums-requirements.md §10's result-day traffic model is the reason this matters). Disabled
+# by default here since it's a per-deployable decision -- a frontend or UMS.Workers may not need
+# it -- but every value below exists specifically so ums-core's own values file can turn it on.
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: ""
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+# Health probes default to a TCP check on containerPort -- safe for any deployable regardless of
+# whether it has implemented HTTP health endpoints yet. ums-conventions.md's Observability section
+# mandates every module (via ums-core) and UMS.Workers expose /health/live (liveness, no
+# dependency checks) + /health/ready (readiness, Postgres + Redis reachability) -- once a
+# deployable exposes them, switch type to httpGet in that deployable's own values file. This is
+# also what the container-diagram's rolling-deploy/HPA model depends on: "without a real readiness
+# probe, a rolling deploy or scale-up routes traffic to a pod before it can actually serve."
+probes:
+  liveness:
+    enabled: true
+    type: tcpSocket
+    path: /health/live
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    enabled: true
+    type: tcpSocket
+    path: /health/ready
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  startup:
+    enabled: false
+    type: tcpSocket
+    path: /health/live
+    initialDelaySeconds: 0
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 30
+
+# Scraped by platform-observability's kube-prometheus-stack once a deployable exposes Prometheus-
+# format metrics, per ums-conventions.md's Observability section.
+serviceMonitor:
+  enabled: false
+  path: /metrics
+  interval: 15s
+  labels: {}
+
+# Extra environment variables, e.g.:
+#   - name: ASPNETCORE_ENVIRONMENT
+#     value: Development
+env: []
+
+# Non-secret config surfaced as a ConfigMap and mounted as environment variables -- for anything
+# secret, create a Kubernetes Secret out-of-band (e.g. via `kubectl create secret` or
+# sealed-secrets) and reference it through envFrom below; this chart never takes secret values as
+# plain Helm values (ums-conventions.md Resilience & Reliability: "the cluster reads from
+# Kubernetes Secrets").
+config: {}
+
+envFrom: []
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

@@ -11,6 +11,13 @@ terraform/override.tf.json
 
 # Kubernetes
 *.kubeconfig
+# tehcyx/kind provider's own generated kubeconfig-context file (named "<cluster_name>-config"
+# by the underlying kind CLI it wraps - confirmed empirically, not just documentation)
+terraform/*-config
+
+# Helm dependency artifacts (rebuild with `helm dependency build` - Chart.lock pins versions and
+# IS committed, same as kart-infra's own pattern)
+**/charts/*.tgz
 
 .env
 .env.*

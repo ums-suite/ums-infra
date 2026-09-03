@@ -1,0 +1,142 @@
+# Values for a small local/staging kind cluster (one control-plane + one worker node,
+# docs/adr/0001-local-cluster-tool-kind.md): single replica everywhere, low resource
+# requests/limits, ephemeral (emptyDir) storage instead of PersistentVolumeClaims -- data is lost
+# on pod restart, an accepted trade-off for local/staging dev, not a production configuration.
+#
+# Install with:
+#   helm dependency build helm/platform-observability
+#   helm install platform-observability helm/platform-observability \
+#     --namespace observability --create-namespace
+#
+# Grafana admin password (auto-generated, never hardcoded here):
+#   kubectl get secret -n observability platform-observability-grafana \
+#     -o jsonpath='{.data.admin-password}' | base64 -d
+
+kube-prometheus-stack:
+  enabled: true
+
+  alertmanager:
+    # Disabled for local/staging: no on-call routing target exists yet in this environment.
+    # Re-enable once a real Alertmanager receiver is configured for a shared staging cluster
+    # (ums-requirements.md §12.1's alerting/runbook posture applies once one exists).
+    enabled: false
+
+  prometheus:
+    prometheusSpec:
+      retention: 24h
+      resources:
+        requests: { cpu: 100m, memory: 256Mi }
+        limits: { cpu: 500m, memory: 512Mi }
+      # Ephemeral storage -- see file header. Swap for storageSpec.volumeClaimTemplate if this is
+      # ever pointed at a longer-lived staging cluster.
+      storageSpec: {}
+      replicas: 1
+      # kube-prometheus-stack defaults to only selecting ServiceMonitor/PodMonitor/PrometheusRule
+      # objects carrying its own release label. ums-core, UMS.Workers, and each of the six
+      # ums-*-web frontends is deployed by a separate `helm install` from ../service-chart (a
+      # different Helm release each time), so none of their ServiceMonitors ever carry that label
+      # -- these three false values switch Prometheus to select ALL such objects cluster-wide
+      # instead, which is what lets service-chart's `serviceMonitor.enabled: true` (see its
+      # README) actually get scraped without hand-wiring a matching label per deployment.
+      serviceMonitorSelectorNilUsesHelmValues: false
+      podMonitorSelectorNilUsesHelmValues: false
+      ruleSelectorNilUsesHelmValues: false
+
+  prometheusOperator:
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { cpu: 200m, memory: 256Mi }
+
+  grafana:
+    enabled: true
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { cpu: 200m, memory: 256Mi }
+    # No persistence: dashboards/datasources are provisioned as code (below) and re-applied on
+    # every install, so losing ad-hoc UI state on restart is acceptable for this environment.
+    persistence:
+      enabled: false
+    # Pre-wire Loki and Tempo as datasources so an on-call engineer can pivot log -> trace ->
+    # metric from one Grafana instance, per ums-conventions.md's Observability section.
+    additionalDataSources:
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://platform-observability-loki-gateway.observability.svc.cluster.local
+        jsonData:
+          derivedFields:
+            - datasourceUid: tempo
+              matcherRegex: '"traceId":"(\w+)"'
+              name: TraceID
+              url: "$${__value.raw}"
+      - name: Tempo
+        type: tempo
+        access: proxy
+        url: http://platform-observability-tempo.observability.svc.cluster.local:3100
+        uid: tempo
+
+  kubeStateMetrics:
+    enabled: true
+
+  nodeExporter:
+    enabled: true
+
+loki:
+  enabled: true
+
+  # Single-binary deployment mode + filesystem storage: the simplest topology that still validates
+  # the real chart's log path, appropriate for a small local cluster with no S3-compatible object
+  # store dedicated to observability (MinIO in ums-devops's docker-compose.yml is application
+  # object storage per ADR-0010, not shared with this cluster-side stack).
+  deploymentMode: SingleBinary
+
+  loki:
+    auth_enabled: false
+    commonConfig:
+      replication_factor: 1
+    storage:
+      type: filesystem
+    # The chart refuses to render without an explicit schema (there is no sane universal default
+    # -- see the Loki storage docs). tsdb+filesystem is the schema this chart's own docs recommend
+    # pairing with storage.type: filesystem above; this is a real schemaConfig, not the chart's
+    # useTestSchema shortcut, matching this file's "validates the real chart's log path" goal.
+    schemaConfig:
+      configs:
+        - from: "2024-01-01"
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+
+  singleBinary:
+    replicas: 1
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { cpu: 200m, memory: 256Mi }
+    persistence:
+      size: 2Gi
+
+  # SimpleScalable-mode components -- unused when deploymentMode is SingleBinary, explicitly
+  # zeroed so no stray Deployments/StatefulSets are created for them.
+  read:
+    replicas: 0
+  write:
+    replicas: 0
+  backend:
+    replicas: 0
+
+  # No object storage backend needed with storage.type: filesystem.
+  minio:
+    enabled: false
+
+tempo:
+  enabled: true
+  replicas: 1
+  tempo:
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { cpu: 200m, memory: 256Mi }
+    # Default storage.trace.backend is "local" (on-disk filesystem) -- no object storage needed
+    # for a local/staging cluster.

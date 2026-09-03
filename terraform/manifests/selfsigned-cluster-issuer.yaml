@@ -1,0 +1,12 @@
+# Self-signed local CA ClusterIssuer -- no real ACME account, no external dependency, suitable for
+# a local/staging kind cluster only.
+#
+# Any deployment's Ingress (ums-core, UMS.Workers's own probes are internal-only, or any of the
+# six ums-*-web frontends -- all deployed via helm/service-chart) can request a cert via:
+#   cert-manager.io/cluster-issuer: selfsigned-local-ca
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-local-ca
+spec:
+  selfSigned: {}

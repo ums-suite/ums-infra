@@ -1,0 +1,48 @@
+# Values used to smoke-test service-chart end-to-end against a real kind cluster -- proves the
+# whole deploy path (Deployment/Service/Ingress/probes/TLS via the self-signed local ClusterIssuer)
+# without depending on any real UMS image being built yet (ums-core/UMS.Workers/every ums-*-web
+# frontend are all still "Not Started" per release/DEVELOPMENT_PLAN.md).
+#
+#   helm install hello-world ./helm/service-chart -f examples/hello-world-values.yaml
+#   echo "127.0.0.1 hello-world.local" | sudo tee -a /etc/hosts
+#   curl -k https://hello-world.local/
+
+nameOverride: hello-world
+
+image:
+  repository: traefik/whoami
+  tag: "v1.10"
+
+containerPort: 80
+
+# traefik/whoami's image runs as root and declares no non-root user, so the chart's default
+# podSecurityContext.runAsNonRoot: true (correct, secure default) needs an explicit runAsUser to
+# pair with it here -- 65534 ("nobody") works because whoami is a single static Go binary with no
+# /etc/passwd lookup or filesystem-ownership requirement. A real ums-core/UMS.Workers image should
+# instead declare its own non-root user in its Dockerfile (the .NET SDK's `USER $APP_UID` pattern)
+# rather than relying on this override.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  seccompProfile:
+    type: RuntimeDefault
+
+probes:
+  liveness:
+    type: tcpSocket
+  readiness:
+    type: tcpSocket
+
+ingress:
+  enabled: true
+  annotations:
+    cert-manager.io/cluster-issuer: selfsigned-local-ca
+  hosts:
+    - host: hello-world.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: hello-world-tls
+      hosts:
+        - hello-world.local

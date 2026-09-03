@@ -1,0 +1,35 @@
+# kind cluster topology for ums-platform local/staging development.
+#
+# This is the canonical, human-runnable version of the same topology the Terraform `kind_config`
+# block in ../terraform/main.tf provisions (see docs/adr/0001-local-cluster-tool-kind.md for why
+# the two are kept in sync by hand rather than generated from one source).
+#
+# Usage (standalone, without Terraform):
+#   kind create cluster --name ums-platform --config kind/kind-cluster-config.yaml
+#   kind delete cluster --name ums-platform
+#
+# One control-plane node + one worker node: UMS has a much smaller topology than a
+# many-microservice platform (release/DEVELOPMENT_PLAN.md Flow #1 - one ums-core deployable, one
+# UMS.Workers, six frontends, no gateway, no broker), so two nodes total is enough to exercise
+# real scheduling behavior (a Deployment actually landing on a different node than the
+# control-plane) without the resource cost of a bigger cluster. extraPortMappings forwards the
+# host's 80/443 into the control-plane node so an ingress controller (ingress-nginx, installed by
+# Terraform) is reachable at localhost:80/443.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP
+  - role: worker

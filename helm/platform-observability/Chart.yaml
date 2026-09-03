@@ -1,0 +1,31 @@
+apiVersion: v2
+name: platform-observability
+description: >-
+  The shared Grafana LGTM-style observability stack (kube-prometheus-stack + Loki + Tempo) for
+  ums-platform, per ums-conventions.md's Observability section ("exported to a Grafana Loki/Tempo
+  + Prometheus stack per ums-infra"). Provisioned once per cluster via this chart -- ums-core and
+  UMS.Workers never bundle their own Prometheus/Loki/Tempo, they only ship instrumentation
+  (Serilog -> OTLP, OpenTelemetry SDK, Prometheus-format metrics) that this stack scrapes/receives.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+home: https://github.com/ums-suite/ums-infra
+keywords:
+  - observability
+  - prometheus
+  - grafana
+  - loki
+  - tempo
+dependencies:
+  - name: kube-prometheus-stack
+    version: "87.19.1"
+    repository: "https://prometheus-community.github.io/helm-charts"
+    condition: kube-prometheus-stack.enabled
+  - name: loki
+    version: "7.1.0"
+    repository: "https://grafana.github.io/helm-charts"
+    condition: loki.enabled
+  - name: tempo
+    version: "1.24.4"
+    repository: "https://grafana.github.io/helm-charts"
+    condition: tempo.enabled
